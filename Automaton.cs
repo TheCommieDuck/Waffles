@@ -81,14 +81,12 @@ namespace Waffles
 			return true;
 		}
 
-		public bool IsWordInLanguage(List<Symbol> input)
+		public bool IsWordInLanguage(String input)
 		{
 			return IsWordInLanguage(input, StartState);
-			//if we consider epsilon-moves last and ignore any X->ep->X moves, should avoid any infinite loop issues
-
 		}
 
-		public bool IsWordInLanguage(List<Symbol> input, State startState, List<StatePair> pastStates = null)
+		public bool IsWordInLanguage(String input, State startState, List<StatePair> pastStates = null)
 		{
 			//also check our past transitions to avoid getting stuck in a loop of epsilon transitions
 			if (pastStates == null)
@@ -101,11 +99,18 @@ namespace Waffles
 				{
 					//if the last state we visited is the same as the state we started in here (i.e. X=>X), then it's a loop. Similarly
 					//if we have an arbitrary number of epsilon moves but still reach the same state, same issue
-					if (pastStates[pastID].Key == startState)
-						return false;
+                    if (pastStates[pastID].Key == startState)
+                    {
+                        Console.WriteLine("Infinitely looping on epsilon transitions. Returning..");
+                        return false;
+                    }
 					pastID--;
 				}
 			}
+
+            //if we can finish now, finish now
+            if (input.Length == 0 && FinalStates.Contains(startState))
+                return true;
 
 			HashSet<State> nextStates = null, nextEpsilonStates = new HashSet<State>();
 
@@ -115,22 +120,20 @@ namespace Waffles
 				nextEpsilonStates = TransitionFunction[new KeyValuePair<State, Symbol>(startState, Automaton.Epsilon)];
 			}
 
-			//no epsilon moves, no input either
-			if (input.Count == 0)
-			{
-				if (nextEpsilonStates.Count == 0)
-					return FinalStates.Contains(startState);
-			}
-			else
+			//if we have input, then act on it
+			if (input.Length != 0)
 			{
 				TransitionFunction.TryGetValue(new KeyValuePair<State, Symbol>(startState, input.First()), out nextStates);
 			}
 
-			
-			if((nextStates == null || nextStates.Count == 0) && nextEpsilonStates.Count == 0)
-				 return false; //if we have input left but no moves, not accepted
 
-			List<Symbol> newWord = new List<Symbol>(input.Skip(1));
+            if ((nextStates == null || nextStates.Count == 0) && nextEpsilonStates.Count == 0)
+            {
+                Console.WriteLine("Cannot transition, input remaining. Path failed.");
+                return false; //if we have input left but no moves, not accepted
+            }
+
+			String newWord = new String(input.Skip(1).ToArray());
 
 			if (nextStates != null)
 			{
@@ -159,6 +162,7 @@ namespace Waffles
 					return true;
 			}
 
+            //we cannot get here without failing
 			return false;
 		}
 	}

@@ -29,7 +29,7 @@ namespace Waffles
 				1, new HashSet<int>(){ 3 });
 
 			Console.WriteLine(automaton.IsDeterministic());
-			Console.WriteLine(automaton.IsWordInLanguage(new List<Symbol>() { 'a', 'b'}));
+			Console.WriteLine(automaton.IsWordInLanguage("ab"));
 			Console.ReadLine();
 		}
 	}
