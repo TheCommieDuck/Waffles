@@ -47,6 +47,11 @@ namespace Waffles
             return new HashSet<State>(states.Select(i => i.ToString()));
         }
 
+        public static string CreateSetOfStates(HashSet<string> states)
+        {
+            return CreateSetOfStates(states.ToArray());
+        }
+
         public static string CreateSetOfStates(params string[] states)
         {
             if (states.Count() == 0)
@@ -133,11 +138,31 @@ namespace Waffles
             //todo: generate transition function
             //todo: generate finish states
             TransitionMap map = new TransitionMap();
-            foreach (var transition in TransitionFunction)
+            foreach (var state in States)
             {
+                //get all the states reachable with any input
+                HashSet<State> moveTo = GetStatesAccessibleWithAnyInput(state);
+
             }
 
-            return new Automaton(null, Alphabet, null, Automaton.CreateSetOfStates(StartState), null);
+            return new Automaton(null, Alphabet, null, 
+                Automaton.CreateSetOfStates(GetStatesAccessibleFrom(StartState, Automaton.Epsilon)), null);
+        }
+
+        public HashSet<State> GetStatesAccessibleWithAnyInput(State state)
+        {
+            HashSet<State> states = new HashSet<State>();
+            //first add any epsilon states (this is recursive)
+            states.UnionWith(GetStatesAccessibleFrom(state, Automaton.Epsilon));
+            var allTransitions = TransitionFunction.Where((k, v) => k.Key.Key == state);
+            if (allTransitions.Count() == 0)
+                return states;
+            else
+            {
+                foreach(HashSet<State> accessibleStates in allTransitions.Select((k, v) => k.Value))
+                    states.UnionWith(accessibleStates);
+            }
+            return states;
         }
 
         public HashSet<State> GetStatesAccessibleFrom(State state, char input, List<StatePair> pastStates=null)
