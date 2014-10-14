@@ -63,6 +63,8 @@ namespace Waffles
 
 		public const Symbol Epsilon = 'ε';
 
+		public const Symbol ErrorState = '∅';
+
 		public HashSet<State> States { get; private set; }
 
 		public HashSet<Symbol> Alphabet { get; private set; }
@@ -111,19 +113,41 @@ namespace Waffles
 			return TransitionFunction.Keys.Any(s => s.Value == Automaton.Epsilon);
 		}
 
-		public bool IsDeterministic()
+		public bool IsDeterministic(bool verbose=false)
 		{
 			//return false if either: a) any state has multiple transitions on a single symbol
 			//b) any state has < |Σ| transitions (then either it's missing a transition..or more, by the pigeonhole principle - then we've got a))
 			//c) any epsilon moves
-			if(TransitionFunction.Any(s => s.Value.Count > 1 || s.Key.Value == Automaton.Epsilon) || TransitionFunction.Keys.Count == (States.Count * Alphabet.Count))
+			if (TransitionFunction.Any(s => s.Value.Count > 1))
+			{
+				if(verbose)
+					Console.WriteLine("Not deterministic - multiple states per (State, Symbol)!");
 				return false;
+			}
+
+			if (TransitionFunction.Any(s => s.Key.Value == Automaton.Epsilon))
+			{
+				if (verbose)
+					Console.WriteLine("Not deterministic - has epsilon moves!");
+				return false;
+			}
+				
+			if(TransitionFunction.Keys.Count != (States.Count * Alphabet.Count))
+			{
+				if (verbose)
+					Console.WriteLine("Not deterministic - not enough transitions!");
+				return false;
+			}
 
 			//we can assume that the transition function is valid (no invalid states/symbols), so next we just need to check that every (state, symbol) pair is represented
 			foreach (var transition in TransitionFunction.Keys.GroupBy(k => k.Key))
 			{
 				if (transition.Select(s => s.Value).Count() != Alphabet.Count)
+				{
+					if (verbose)
+						Console.WriteLine("Alphabet has {0} symbols, but found {1} symbols to transition on!", Alphabet.Count, transition.Select(s => s.Value).Count());
 					return false;
+				}
 			}
 			return true;
 		}
@@ -135,18 +159,71 @@ namespace Waffles
                 return new Automaton(this);
 
             //todo: generate (minimal) symbols
-            //todo: generate transition function
             //todo: generate finish states
             TransitionMap map = new TransitionMap();
-            foreach (var state in States)
-            {
-                //get all the states reachable with any input
-                HashSet<State> moveTo = GetStatesAccessibleWithAnyInput(state);
+			//ep-closure
+			HashSet<State> startStates = GetStatesAccessibleFrom(StartState, Automaton.Epsilon);
+			Stack<HashSet<State>> statesToVisit = new Stack<HashSet<State>>();
+			List<HashSet<State>> newStates = new List<HashSet<State>>();
 
-            }
+			statesToVisit.Push(startStates);
 
-            return new Automaton(null, Alphabet, null, 
-                Automaton.CreateSetOfStates(GetStatesAccessibleFrom(StartState, Automaton.Epsilon)), null);
+			newStates.Add(startStates);
+
+			HashSet<State> finalStates = new HashSet<State>();
+			//consider the case our start state(s) are final
+			if (startStates.Intersect(FinalStates).Count() != 0)
+			{
+				Console.WriteLine("Start state(s) are final; adding..");
+				finalStates.Add(Automaton.CreateSetOfStates(startStates));
+			}
+
+			while(statesToVisit.Count > 0)
+			{
+				HashSet<State> stateSet = statesToVisit.Pop();
+
+				//consider each symbol in our alphabet; the transition from S => S is going to be the union of every possible accessible state
+				foreach(Symbol symbol in Alphabet)
+				{
+					//if the map contains this key, then we've already visited this state - don't do it again
+					if (!map.ContainsKey(new StatePair(Automaton.CreateSetOfStates(stateSet), symbol)))
+					{
+						HashSet<State> closure = new HashSet<State>();
+
+						foreach (State state in stateSet)
+							closure.UnionWith(GetStatesAccessibleFrom(state, symbol));
+						Console.WriteLine("From state {0}, on input {2}, the states are {1}", Automaton.CreateSetOfStates(stateSet), Automaton.CreateSetOfStates(closure), symbol);
+
+						HashSet<State> stateToAdd = new HashSet<State>() { closure.Count == 0 ? Automaton.CreateSetOfStates(Automaton.ErrorState.ToString()) : 
+							Automaton.CreateSetOfStates(closure)};
+
+						//so now closure is every possible state reachable from some symbol. If it's empty, it's the error state
+						Console.WriteLine("Adding transition from state {0} on symbol {1}", Automaton.CreateSetOfStates(stateSet), symbol);
+						map.Add(new StatePair(Automaton.CreateSetOfStates(stateSet), symbol), stateToAdd);
+
+						//keep a track of the sets we have
+						newStates.Add(stateToAdd);
+
+						//if we have a final state, the set of states is final
+						if (closure.Intersect(FinalStates).Count() != 0)
+							finalStates.Add(Automaton.CreateSetOfStates(closure));
+
+						//now we need to visit this set of states and find where it goes
+						if (closure.Count != 0)
+							statesToVisit.Push(closure);
+					}
+				}
+			}
+
+			HashSet<State> states = new HashSet<State>();
+			//the set of states is the unique keys in the mapping
+			foreach (var state in map.Keys.GroupBy(k => k.Key))
+				states.Add(state.Key);
+
+			//the final states are any of the 'new' states which contain a final state
+
+            return new Automaton(states, Alphabet, map, 
+                Automaton.CreateSetOfStates(startStates), finalStates);
         }
 
         public HashSet<State> GetStatesAccessibleWithAnyInput(State state)
@@ -188,6 +265,10 @@ namespace Waffles
             }
 
             HashSet<State> ret = new HashSet<State>();
+
+			if (input == Automaton.Epsilon)
+				ret.Add(state);
+
 			HashSet<State> nextStates = null, nextEpsilonStates = null;
 
 			//add all the states we can get to from here.

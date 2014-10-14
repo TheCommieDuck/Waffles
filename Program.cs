@@ -28,6 +28,8 @@ namespace Waffles
 				"1", Automaton.CreateFinalStates(3));
 
 			Console.WriteLine(automaton.IsWordInLanguage("ab"));
+			Automaton dfa = automaton.CreateDeterministicAutomaton();
+			Console.WriteLine(dfa.IsDeterministic(true));
 			Console.ReadLine();
 		}
 	}
