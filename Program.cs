@@ -14,21 +14,19 @@ namespace Waffles
 	{
 		static void Main(string[] args)
 		{
-			Automaton.TransitionMap transition = new Automaton.TransitionMap(){
-				{new StatePair(1, 'a'), new HashSet<int>(){3}},
-				{new StatePair(1, Automaton.Epsilon), new HashSet<int>(){3}},
-				{new StatePair(2, 'a'), new HashSet<int>(){1, 2}},
-				{new StatePair(2, 'c'), new HashSet<int>(){3}},
-				{new StatePair(3, 'b'), new HashSet<int>(){1, 2}},
-			};
+            Automaton.TransitionMap transition = new Automaton.TransitionMap();
+            transition.Add(1, 'a', 3);
+            transition.Add(1, Automaton.Epsilon, 3);
+            transition.Add(2, 'a', 1, 2);
+            transition.Add(2, 'c', 3);
+            transition.Add(3, 'b', 1, 2);
 
 			Automaton automaton = new Automaton(
-				new HashSet<int>(new []{1, 2, 3}), 
+				Automaton.CreateStates(3), 
 				new HashSet<char>(new []{'a', 'b', 'c'}),
 				transition,
-				1, new HashSet<int>(){ 3 });
+				"1", Automaton.CreateFinalStates(3));
 
-			Console.WriteLine(automaton.IsDeterministic());
 			Console.WriteLine(automaton.IsWordInLanguage("ab"));
 			Console.ReadLine();
 		}

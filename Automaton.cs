@@ -4,25 +4,59 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-using State = System.Int32;
+using State = System.String;
 using Symbol = System.Char;
 
 
 namespace Waffles
 {
-	using StatePair = System.Collections.Generic.KeyValuePair<State, Symbol>;
-	//generalised automaton - can create specific DFAs or NFAs (no epsilon moves)
+    using StatePair = System.Collections.Generic.KeyValuePair<State, Symbol>;
+
+    public static class DictExtension
+    {
+        public static void Add(this Dictionary<StatePair, HashSet<State>> dict, int startState, char input, params int[] moveTo)
+        {
+            dict.Add(new StatePair(startState.ToString(), input), Automaton.CreateFinalStates(moveTo));
+        }
+    }
+
 	class Automaton
 	{
 		//neatness
-		public class TransitionMap : Dictionary<StatePair, HashSet<State>> { }
+		public class TransitionMap : Dictionary<StatePair, HashSet<State>>
+        {
+            public TransitionMap(TransitionMap other)
+            {
+                foreach (var set in other)
+                    this.Add(set.Key, new HashSet<State>(set.Value));
+            }
+
+            public TransitionMap()
+            {
+            }
+        }
+
+        public static HashSet<State> CreateStates(int count)
+        {
+            IEnumerable<int> range = Enumerable.Range(1, count);
+            return new HashSet<State>(range.Select(i => i.ToString()));//.Aggregate((i, j) => i.ToString() + " " + j);
+        }
+
+        public static HashSet<State> CreateFinalStates(params int[] states)
+        {
+            return new HashSet<State>(states.Select(i => i.ToString()));
+        }
+
+        public static string CreateSetOfStates(params string[] states)
+        {
+            if (states.Count() == 0)
+                return null;
+            if (states.Count() == 1)
+                return "{" + states[0] + "}";
+            return "{" + string.Join(", ", states) + "}";
+        }
 
 		public const Symbol Epsilon = 'ε';
-
-		public static HashSet<State> CreateNumberOfStates(int numberOfStates)
-		{
-			return new HashSet<State>(Enumerable.Range(0, numberOfStates));
-		}
 
 		public HashSet<State> States { get; private set; }
 
@@ -44,6 +78,15 @@ namespace Waffles
 
 			VerifyAutomaton();
 		}
+
+        public Automaton(Automaton automaton)
+        {
+            this.States = new HashSet<State>(automaton.States);
+            this.Alphabet = new HashSet<Symbol>(automaton.Alphabet);
+            this.TransitionFunction = new TransitionMap(automaton.TransitionFunction);
+            this.StartState = automaton.StartState;
+            this.FinalStates = new HashSet<State>(automaton.FinalStates);
+        }
 
 		public void VerifyAutomaton()
 		{
@@ -74,96 +117,110 @@ namespace Waffles
 			//we can assume that the transition function is valid (no invalid states/symbols), so next we just need to check that every (state, symbol) pair is represented
 			foreach (var transition in TransitionFunction.Keys.GroupBy(k => k.Key))
 			{
-				IEnumerable<Symbol> symbols = transition.Select(s => s.Value);
-				if (symbols.Count() != Alphabet.Count)
+				if (transition.Select(s => s.Value).Count() != Alphabet.Count)
 					return false;
 			}
 			return true;
 		}
+
+        public Automaton CreateDeterministicAutomaton()
+        {
+            //return if we're already deterministic.
+            if (IsDeterministic())
+                return new Automaton(this);
+
+            //todo: generate (minimal) symbols
+            //todo: generate transition function
+            //todo: generate finish states
+            TransitionMap map = new TransitionMap();
+            foreach (var transition in TransitionFunction)
+            {
+            }
+
+            return new Automaton(null, Alphabet, null, Automaton.CreateSetOfStates(StartState), null);
+        }
+
+        public HashSet<State> GetStatesAccessibleFrom(State state, char input, List<StatePair> pastStates=null)
+        {
+            //avoid infinite loops of epsilon
+            if (pastStates == null)
+                pastStates = new List<StatePair>();
+            else
+            {
+                //this is the state we immediately transitioned from
+                int pastID = pastStates.Count - 1;
+                while (pastID >= 0 && pastStates[pastID].Value == Automaton.Epsilon)
+                {
+                    //if the last state we visited is the same as the state we started in here (i.e. X=>X), then it's a loop. Similarly
+                    //if we have an arbitrary number of epsilon moves but still reach the same state, same issue
+                    if (pastStates[pastID].Key == state)
+                    {
+                        Console.WriteLine("Infinitely looping on epsilon transitions. Returning..");
+                        return new HashSet<State>(); //so we can't get anywhere new from here
+                    }
+                    pastID--;
+                }
+            }
+
+            HashSet<State> ret = new HashSet<State>();
+			HashSet<State> nextStates = null, nextEpsilonStates = null;
+
+			//add all the states we can get to from here.
+            TransitionFunction.TryGetValue(new KeyValuePair<State, Symbol>(state, Automaton.Epsilon), out nextEpsilonStates);
+			TransitionFunction.TryGetValue(new KeyValuePair<State, Symbol>(state, input), out nextStates);
+
+            if (nextStates != null)
+                ret = nextStates;
+
+            if (nextEpsilonStates != null)
+            {
+                foreach (State epState in nextEpsilonStates)
+                {
+                    StatePair currentState = new StatePair(state, Automaton.Epsilon);
+                    List<StatePair> updatedPastStates = new List<StatePair>(pastStates);
+                    updatedPastStates.Add(currentState);
+                    ret.UnionWith(GetStatesAccessibleFrom(epState, input, updatedPastStates));
+                }
+            }
+
+            return ret;
+        }
+
+        public HashSet<State> GetStatesAccessibleFrom(State state, string input)
+        {
+            if (input.Length == 0)
+                return GetStatesAccessibleFrom(state, Automaton.Epsilon);
+            HashSet<State> allStates = new HashSet<State>();
+            //keep a track of all our current pebbles (which are states mapped to the input remaining
+            Stack<KeyValuePair<State, string>> pebbles = new Stack<KeyValuePair<State, State>>();
+            pebbles.Push(new KeyValuePair<State, string>(state, input));
+            while (pebbles.Count > 0)
+            {
+                var current = pebbles.Pop();
+                if (current.Value.Length == 0)
+                    allStates.UnionWith(GetStatesAccessibleFrom(current.Key, Automaton.Epsilon));
+                else
+                {
+                    string newInput = new string(current.Value.Skip(1).ToArray());
+                    foreach (State s in GetStatesAccessibleFrom(current.Key, current.Value.First()))
+                        pebbles.Push(new KeyValuePair<State, string>(s, newInput));
+                }
+            }
+            return allStates;
+        }
 
 		public bool IsWordInLanguage(String input)
 		{
 			return IsWordInLanguage(input, StartState);
 		}
 
-		public bool IsWordInLanguage(String input, State startState, List<StatePair> pastStates = null)
+		public bool IsWordInLanguage(String input, State startState)
 		{
-			//also check our past transitions to avoid getting stuck in a loop of epsilon transitions
-			if (pastStates == null)
-				pastStates = new List<StatePair>();
-			else
-			{
-				//this is the state we immediately transitioned from
-				int pastID = pastStates.Count-1;
-				while(pastID >= 0 && pastStates[pastID].Value == Automaton.Epsilon)
-				{
-					//if the last state we visited is the same as the state we started in here (i.e. X=>X), then it's a loop. Similarly
-					//if we have an arbitrary number of epsilon moves but still reach the same state, same issue
-                    if (pastStates[pastID].Key == startState)
-                    {
-                        Console.WriteLine("Infinitely looping on epsilon transitions. Returning..");
-                        return false;
-                    }
-					pastID--;
-				}
-			}
-
             //if we can finish now, finish now
-            if (input.Length == 0 && FinalStates.Contains(startState))
-                return true;
+            if (input.Length == 0)
+                return FinalStates.Contains(startState);
 
-			HashSet<State> nextStates = null, nextEpsilonStates = new HashSet<State>();
-
-			//add epsilon states if we have them; if we don't, and we have no regular transitions, return
-			if (TransitionFunction.ContainsKey(new KeyValuePair<State, Symbol>(startState, Automaton.Epsilon)))
-			{
-				nextEpsilonStates = TransitionFunction[new KeyValuePair<State, Symbol>(startState, Automaton.Epsilon)];
-			}
-
-			//if we have input, then act on it
-			if (input.Length != 0)
-			{
-				TransitionFunction.TryGetValue(new KeyValuePair<State, Symbol>(startState, input.First()), out nextStates);
-			}
-
-
-            if ((nextStates == null || nextStates.Count == 0) && nextEpsilonStates.Count == 0)
-            {
-                Console.WriteLine("Cannot transition, input remaining. Path failed.");
-                return false; //if we have input left but no moves, not accepted
-            }
-
-			String newWord = new String(input.Skip(1).ToArray());
-
-			if (nextStates != null)
-			{
-				foreach (State state in nextStates)
-				{
-					//we're going to take the state we're currently in + the symbol we are consuming
-					StatePair currentState = new StatePair(startState, input.First());
-					List<StatePair> updatedPastStates = new List<StatePair>(pastStates);
-					updatedPastStates.Add(currentState);
-
-					//and now continue
-					Console.WriteLine("At state {0}, using symbol {1} and transitioning to state {2} (input remaining is {3})", startState, input.First(), state, 
-						new string(newWord.ToArray()));
-					if (IsWordInLanguage(newWord, state, updatedPastStates))
-						return true;
-				}
-			}
-
-			foreach(State state in nextEpsilonStates)
-			{
-				StatePair currentState = new StatePair(startState, Automaton.Epsilon);
-				List<StatePair> updatedPastStates = new List<StatePair>(pastStates);
-				updatedPastStates.Add(currentState);
-				Console.WriteLine("At state {0}, using symbol {1} and transitioning to state {2} (input remaining is {3})", startState, Automaton.Epsilon, state, new string(input.ToArray()));
-				if (IsWordInLanguage(input, state, updatedPastStates))
-					return true;
-			}
-
-            //we cannot get here without failing
-			return false;
+            return GetStatesAccessibleFrom(startState, input).Intersect(FinalStates).Count() > 0;
 		}
 	}
 }
