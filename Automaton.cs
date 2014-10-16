@@ -19,14 +19,14 @@ namespace Waffles
 
         public State StartState { get; protected set; }
 
+		public HashSet<State> FinalStates { get; protected set; }
+
         public abstract void VerifyAutomaton();
 
         public abstract bool ContainsEpsilonMoves();
 
         public abstract bool IsDeterministic(bool verbose);
 
-        public abstract Automaton<TransitionOn, TransitionTo> CreateDeterminsticAutomaton();
-
-
+        public abstract Automaton<TransitionOn, TransitionTo> CreateDeterministicAutomaton();
     }
 }

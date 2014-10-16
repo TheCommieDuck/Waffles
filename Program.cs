@@ -21,16 +21,18 @@ namespace Waffles
             transition.Add(2, 'c', 3);
             transition.Add(3, 'b', 1, 2);
 
-			OldAutomaton automaton = new OldAutomaton(
+			FiniteStateAutomaton automaton = new FiniteStateAutomaton(
 				AutomatonHelper.CreateStates(3), 
 				new HashSet<char>(new []{'a', 'b', 'c'}),
 				transition,
 				"1", AutomatonHelper.CreateFinalStates(3));
 
 			Console.WriteLine(automaton.IsWordInLanguage("ab"));
-			OldAutomaton dfa = automaton.CreateDeterministicAutomaton();
+			FiniteStateAutomaton dfa = (FiniteStateAutomaton)automaton.CreateDeterministicAutomaton();
 			Console.WriteLine(dfa.IsDeterministic(true));
-			Console.ReadLine();
+
+			Game1 game = new Game1();
+			game.Run();
 		}
 	}
 }
